@@ -1,6 +1,17 @@
 import React, { Component, Fragment } from 'react';
 import './App.css';
 
+function assembleRows(classSchedule) {
+  const rows = [[],[],[],[],[],[],[]]
+  for (let i = 0; i < 7; i++) {
+    for (let j = 0; j < 7; j++) {
+      rows[j][i] = classSchedule[i][j] !== undefined ? classSchedule[i][j] : null
+    }
+  }
+  console.log(rows)
+  return rows
+}
+
 async function fakeAuth(email) {
   if (email.indexOf('@') === -1) {
     throw new Error('Invalid email')
@@ -10,13 +21,16 @@ async function fakeAuth(email) {
 class App extends Component {
   state = {
     email: '',
+    password: '',
     token: undefined,
     error: undefined,
-    schedules: undefined
+    schedules: undefined,
+    classSchedule: undefined,
+    moolah: undefined
   }
 
   handleChange = (event) => {
-    this.setState({email: event.target.value})
+    this.setState({ [event.target.name]: event.target.value})
   }
 
   handleSubmit = (event) => {
@@ -25,22 +39,39 @@ class App extends Component {
       .then(token => this.setState({ token }))
       .catch(error => this.setState({ error: error.message }))
 
-    const chartiesUrl = `https://api.dineoncampus.com/v1/locations/open?site_id=5751fd3390975b60e048938a&timestamp=${new Date(Date.now()).toISOString()}`
-    fetch(chartiesUrl)
+    // const chartiesUrl = `https://api.dineoncampus.com/v1/locations/open?site_id=5751fd3390975b60e048938a&timestamp=${new Date(Date.now()).toISOString()}`
+    fetch('/charties')
       .then(res => res.json())
       .then(data => {
+        console.log(data)
         const schedules = data['location_schedules']
-        console.log(schedules)
         this.setState({schedules})
       })
+      .catch(error => console.log(error))
 
-    // fetch('/schedule')
-    //   .then(res => res.json())
-    //   .then(data => console.log(data))
+    fetch('/schedule', {
+      method: "POST",
+      body: JSON.stringify({
+        "Email": this.state.email.slice(0, this.state.email.indexOf('@')),
+        "Password": this.state.password
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log(data)
+        this.setState({ classSchedule: data })
+      })
+      .catch(error => console.log(error))
 
-    // fetch('/moolah')
-    //   .then(res => res.json())
-    //   .then(data => console.log(data))
+    fetch('/moolah', {
+      method: "POST",
+      body: JSON.stringify({
+        "Email": this.state.email.slice(0, this.state.email.indexOf('@')),
+        "Password": this.state.password
+      })
+    })
+      .then(res => res.json())
+      .then(data => this.setState({ moolah: data }))
 
     event.preventDefault()
   }
@@ -53,7 +84,7 @@ class App extends Component {
     return (
       <div className="container-fluid">
         <div className="row">
-          <div className="col-sm-10 col-md-8 offset-md-2">
+          <div className="col-sm-10 offset-md-1">
             <h1>Final Project</h1>
             { this.state.token === undefined ? (
               <form onSubmit={this.handleSubmit} style={{ maxWidth: '300px'}}>
@@ -65,7 +96,17 @@ class App extends Component {
                     type="email"
                     placeholder="Email"
                     className="form-control"
-                    name={this.state.value}
+                    name="email"
+                    value={this.state.value}
+                    onChange={this.handleChange} />
+                  <input
+                    required
+                    id="password"
+                    type="password"
+                    placeholder="password"
+                    className="form-control"
+                    name="password"
+                    value={this.state.value}
                     onChange={this.handleChange} />
                 </div>
                 <button
@@ -95,20 +136,28 @@ class App extends Component {
                         </thead>
                         <tbody>
                           {
-                            this.state.schedules.map(schedule => {
+                            this.state.schedules.map((schedule, i) => {
                               const s = [null, null, null, null, null, null, null]
                               schedule['schedules'].forEach(subSchedule => {
                                 subSchedule['days'].forEach(day => {
-                                  const { start_hour, start_minutes, end_hour, end_minutes } = subSchedule
+                                  let { start_hour, start_minutes, end_hour, end_minutes } = subSchedule
+                                  start_hour = start_hour > 12 ? start_hour - 12 : start_hour === 12 ? 12 : start_hour
+                                  start_minutes = start_minutes === 0 ? '00' : start_minutes
+                                  let _end_hour = end_hour
+                                  end_hour = end_hour > 12 ? end_hour - 12 : end_hour === 0 ? 12 : end_hour
+                                  end_minutes = end_minutes === 0 ? '00' : end_minutes
                                   s[day] = {
-                                    "startTime": `${start_hour}:${start_minutes === 0 ? '00' : start_minutes}`,
-                                    "endTime": `${end_hour}:${end_minutes === 0 ? '00' : end_minutes}` 
+                                    "startTime": `${start_hour}:${start_minutes}am`,
+                                    "endTime": `${end_hour}:${end_minutes}${_end_hour === 0 ? 'am' : 'pm'}`
                                   }
                                 })
                               })
+                              const _name = schedule['name'].split(' ')
+                              _name.pop()
+                              const name = _name.join(' ')
                               return (
-                                <tr>
-                                  <th scope="row">{schedule['name']}</th>
+                                <tr key={`schedule-${i}`}>
+                                  <th scope="row">{name}</th>
                                   {s.map((day, i) => (
                                     day === null ? (
                                       <td key={`${schedule['id']}-${i}`}>
@@ -116,7 +165,7 @@ class App extends Component {
                                       </td>
                                     ) : (
                                       <td key={`${schedule['id']}-${i}`}>
-                                        {`${day['startTime']}-${day['endTime']}`}
+                                        {`${day['startTime']} - ${day['endTime']}`}
                                       </td>
                                     )
                                   ))}
@@ -129,14 +178,42 @@ class App extends Component {
                     </div>
                   )
                 }
-                
-                
+                {
+                  this.state.classSchedule && (
+                    <div>
+                      <h2>Schedule</h2>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Sunday</th>
+                            <th scope="col">Monday</th>
+                            <th scope="col">Tuesday</th>
+                            <th scope="col">Wednesday</th>
+                            <th scope="col">Thursday</th>
+                            <th scope="col">Friday</th>
+                            <th scope="col">Saturday</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {
+                            assembleRows(this.state.classSchedule).map((row, i) => {
+                              let renderRow = !row.every(v => v === null)
+                              return renderRow && (
+                                <tr>
+                                  {row.map((c, j) => (
+                                    <td key={`${i}${j}`}>{c === null ? null : c}</td>
+                                  ))}
+                                </tr>
+                              )
+                            })
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                }
                 <div>
-                  <h2>Schedule</h2>
-                </div>
-
-                <div>
-                  <h2>Fenway Cash</h2>
+                  <h2>Fenway Cash ${this.state.moolah && `${this.state.moolah}`}</h2>
                 </div>
               </Fragment>
             )}
